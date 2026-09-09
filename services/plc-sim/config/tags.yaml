@@ -1,0 +1,518 @@
+# =============================================================================
+# Drying chamber PLC — Modbus TCP tag map
+# =============================================================================
+# This file is the single source of truth for the Modbus interface.
+# Both the simulator and any client (collector, HMI, test harness) read it.
+# Adding a sensor or a chamber must never require a code change.
+#
+# Conventions
+#   - addresses are raw PDU addresses, zero-based (pymodbus zero_mode=True)
+#   - all registers are 16-bit; fractional values are stored x10
+#   - engineering value = raw * scale   (e.g. 653 * 0.1 = 65.3 degC)
+#   - reserved ranges exist so new tags never shift existing addresses
+# =============================================================================
+
+version: 1
+
+device:
+  model: generic-drying-chamber
+  description: Single drying chamber controller, one TCP endpoint per chamber
+  host: 0.0.0.0
+  port: 5020
+  unit_id: 1
+  # One container == one chamber == one IP, mirroring real hardware where each
+  # PLC owns an address and listens on the standard Modbus port.
+  # In production only host/port change; nothing below does.
+
+# -----------------------------------------------------------------------------
+# Enumerations
+# -----------------------------------------------------------------------------
+enums:
+  chamber_state:
+    0: IDLE
+    1: READY
+    2: RUNNING
+    3: WARM_HOLD
+    4: STOPPED
+    5: FAULT
+    6: WAITING
+    7: PAUSED
+
+  alarm_code:
+    0: NONE
+    1: OVERTEMP
+    2: SENSOR_FAIL
+    3: E_STOP
+    4: HEATER_FAIL
+    5: FAN_FAIL
+
+  ack_status:
+    0: ACCEPTED
+    1: REJECTED
+    2: EXECUTING
+    3: COMPLETED
+    4: FAILED
+    5: NONE
+
+  desired_mode:
+    0: NONE
+    1: WAIT
+    2: RUN
+    3: WARM
+
+# Bit positions inside holding register 100 (cmd_word).
+command_bits:
+  0: START
+  1: STOP
+  2: RESET
+  3: ACK_ALARM
+  4: WARM
+  5: PAUSE
+  6: RESUME
+  7: WAIT
+  8: SET
+
+# -----------------------------------------------------------------------------
+# Contiguous ranges a client can read or write in a single Modbus transaction.
+# Declaring them here means the client never has to infer batching from the
+# tag list, and a poll cycle stays at a fixed, predictable request count.
+# -----------------------------------------------------------------------------
+blocks:
+  command:
+    function: holding
+    start: 100
+    count: 8
+    access: w
+    note: Write 101-106 with FC16, then 100, then 107 last to commit.
+
+  status:
+    function: holding
+    start: 200
+    count: 12
+    access: r
+
+  sensors:
+    function: holding
+    start: 220
+    count: 12
+    access: r
+    note: Covers temp 1-4 and rh 1-4 including the reserved gap between them.
+
+  diagnostics:
+    function: holding
+    start: 300
+    count: 7
+    access: r
+
+  panel_outputs:
+    function: coil
+    start: 0
+    count: 5
+    access: rw
+
+  panel_inputs:
+    function: discrete_input
+    start: 0
+    count: 11
+    access: r
+
+# -----------------------------------------------------------------------------
+# Command block — written by the gateway. 100..115 (108..115 reserved)
+# -----------------------------------------------------------------------------
+holding_registers:
+
+  - address: 100
+    name: cmd_word
+    datatype: uint16
+    encoding: bitmask
+    access: w
+    description: Command bitmask; see command_bits.
+
+  - address: 101
+    name: setpoint_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: w
+    range: [300, 900]
+
+  - address: 102
+    name: warm_hold_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: w
+    range: [300, 900]
+
+  - address: 103
+    name: step_index
+    datatype: uint16
+    access: w
+
+  - address: 104
+    name: profile_len
+    datatype: uint16
+    access: w
+    range: [0, 48]
+
+  - address: 105
+    name: gw_heartbeat
+    datatype: uint16
+    access: w
+    description: Gateway liveness counter, wraps 1..32767.
+
+  - address: 106
+    name: desired_mode
+    datatype: uint16
+    encoding: enum
+    enum: desired_mode
+    access: w
+
+  - address: 107
+    name: cmd_seq
+    datatype: uint16
+    access: w
+    description: >
+      Commit point. The PLC evaluates the command frame only when this value
+      changes, which makes the multi-register write atomic and idempotent.
+
+  # ---------------------------------------------------------------------------
+  # Status block — written by the PLC. 200..215 (212..215 reserved)
+  # ---------------------------------------------------------------------------
+
+  - address: 200
+    name: chamber_state
+    datatype: uint16
+    encoding: enum
+    enum: chamber_state
+    access: r
+
+  - address: 201
+    name: alarm_code
+    datatype: uint16
+    encoding: enum
+    enum: alarm_code
+    access: r
+
+  - address: 202
+    name: temp_max_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    sim:
+      source: derived
+      expr: max(temp_1..temp_4)
+
+  - address: 203
+    name: rh_avg_x10
+    datatype: uint16
+    unit: percent
+    scale: 0.1
+    access: r
+    range: [0, 1000]
+    sim:
+      source: derived
+      expr: mean(rh_1..rh_4)
+
+  - address: 204
+    name: heater_on
+    datatype: uint16
+    encoding: bool
+    access: r
+
+  - address: 205
+    name: setpoint_latched_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    description: Setpoint the PLC actually accepted, after clamping.
+
+  - address: 206
+    name: step_index_latched
+    datatype: uint16
+    access: r
+
+  - address: 207
+    name: gw_link_ok
+    datatype: uint16
+    encoding: bool
+    access: r
+    description: PLC's own view of gateway liveness, from gw_heartbeat.
+
+  - address: 208
+    name: plc_heartbeat
+    datatype: uint16
+    access: r
+
+  - address: 209
+    name: ack_status
+    datatype: uint16
+    encoding: enum
+    enum: ack_status
+    access: r
+
+  - address: 210
+    name: last_cmd_seq_done
+    datatype: uint16
+    access: r
+    description: Gateway waits for this to equal cmd_seq before reading ack.
+
+  - address: 211
+    name: state_seq
+    datatype: uint16
+    access: r
+    description: Increments whenever state, alarm, or step changes.
+
+  # ---------------------------------------------------------------------------
+  # Sensor block — 220..249
+  #   220-223 temp 1-4      224-227 reserved (temp 5-8)
+  #   228-231 rh 1-4        232-235 reserved (rh 5-8)
+  # A fifth sensor slots into the reserved gap without moving rh addresses.
+  # ---------------------------------------------------------------------------
+
+  - address: 220
+    name: temp_1_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    range: [300, 900]
+    sim:
+      source: chamber_temp
+      gradient: -0.53
+      offset_range: [-1.0, 1.0]
+      noise: 0.12
+
+  - address: 221
+    name: temp_2_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    range: [300, 900]
+    sim:
+      source: chamber_temp
+      gradient: -0.18
+      offset_range: [-1.0, 1.0]
+      noise: 0.12
+
+  - address: 222
+    name: temp_3_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    range: [300, 900]
+    sim:
+      source: chamber_temp
+      gradient: 0.18
+      offset_range: [-1.0, 1.0]
+      noise: 0.12
+
+  - address: 223
+    name: temp_4_x10
+    datatype: uint16
+    unit: degC
+    scale: 0.1
+    access: r
+    range: [300, 900]
+    sim:
+      source: chamber_temp
+      gradient: 0.53
+      offset_range: [-1.0, 1.0]
+      noise: 0.12
+
+  - address: 228
+    name: rh_1_x10
+    datatype: uint16
+    unit: percent
+    scale: 0.1
+    access: r
+    range: [0, 1000]
+    sim:
+      source: chamber_humidity
+      gradient: 1.2
+      offset_range: [-2.0, 2.0]
+      noise: 0.6
+
+  - address: 229
+    name: rh_2_x10
+    datatype: uint16
+    unit: percent
+    scale: 0.1
+    access: r
+    range: [0, 1000]
+    sim:
+      source: chamber_humidity
+      gradient: 0.4
+      offset_range: [-2.0, 2.0]
+      noise: 0.6
+
+  - address: 230
+    name: rh_3_x10
+    datatype: uint16
+    unit: percent
+    scale: 0.1
+    access: r
+    range: [0, 1000]
+    sim:
+      source: chamber_humidity
+      gradient: -0.4
+      offset_range: [-2.0, 2.0]
+      noise: 0.6
+
+  - address: 231
+    name: rh_4_x10
+    datatype: uint16
+    unit: percent
+    scale: 0.1
+    access: r
+    range: [0, 1000]
+    sim:
+      source: chamber_humidity
+      gradient: -1.2
+      offset_range: [-2.0, 2.0]
+      noise: 0.6
+
+  # ---------------------------------------------------------------------------
+  # Diagnostics — 300..311. The device reports on itself.
+  # Feeds a Prometheus exporter later without touching the control blocks.
+  # ---------------------------------------------------------------------------
+
+  - address: 300
+    name: uptime_sec
+    datatype: uint32
+    word_order: little
+    registers: 2
+    unit: s
+    access: r
+    description: Low word at 300, high word at 301.
+
+  - address: 302
+    name: scan_time_ms
+    datatype: uint16
+    unit: ms
+    access: r
+    description: Duration of the most recent simulation tick.
+
+  - address: 303
+    name: request_count
+    datatype: uint32
+    word_order: little
+    registers: 2
+    access: r
+
+  - address: 305
+    name: sim_anomaly_active
+    datatype: uint16
+    encoding: bitmask
+    access: r
+    description: bit 0 spike, bit 1 stuck, bit 2 drift.
+
+  - address: 306
+    name: config_version
+    datatype: uint16
+    access: r
+    description: Mirrors the top-level version field of this file.
+
+# -----------------------------------------------------------------------------
+# Coils (FC1 / FC5 / FC15) — writable bits, local panel path.
+# Deliberately separate from cmd_word: panel buttons carry no parameters, so
+# they do not need the atomic multi-register commit protocol.
+# -----------------------------------------------------------------------------
+coils:
+  - {address: 0, name: local_start,      access: rw}
+  - {address: 1, name: local_stop,       access: rw}
+  - {address: 2, name: alarm_ack,        access: rw}
+  - {address: 3, name: lamp_test,        access: rw}
+  - {address: 4, name: maintenance_mode, access: rw,
+     description: Blocks remote commands while maintenance is in progress.}
+
+# -----------------------------------------------------------------------------
+# Discrete inputs (FC2) — read-only bits.
+# -----------------------------------------------------------------------------
+discrete_inputs:
+  - {address: 0,  name: alarm_active}
+  - {address: 1,  name: heater_feedback}
+  - {address: 2,  name: fan_feedback}
+  - {address: 3,  name: estop_ok}
+  - {address: 4,  name: door_closed}
+  - {address: 5,  name: sensor_1_ok}
+  - {address: 6,  name: sensor_2_ok}
+  - {address: 7,  name: sensor_3_ok}
+  - {address: 8,  name: sensor_4_ok}
+  - {address: 9,  name: gw_link_ok}
+  - {address: 10, name: running}
+
+# -----------------------------------------------------------------------------
+# Process model
+# Sensor values are not independent random walks. One thermal model drives the
+# chamber, and each sensor observes it through its own gradient, fixed offset
+# and noise. That is what makes a dashboard readable and an anomaly detectable.
+# -----------------------------------------------------------------------------
+simulation:
+  tick_interval_sec: 0.2
+  seed: chamber-default          # deterministic per chamber; override per instance
+
+  ambient:
+    temp_c: 31.0
+    humidity_pct: 72.0
+
+  thermal:
+    heat_gain_per_sec: 0.26      # heater on, at full gap
+    passive_cool_per_sec: 0.018  # proportional to (chamber - ambient)
+    fan_cool_per_sec: 0.018      # extra loss while the fan runs
+    max_temp_c: 102.0
+
+  moisture:
+    initial_ratio: 0.78
+    drying_rate_per_sec: 0.0022
+    wet_recovery_per_sec: 0.00015
+
+  control:
+    hysteresis_x10: 10           # +/- 1.0 degC around target
+    min_on_off_sec: 30           # anti short-cycle, protects the heater
+
+  heartbeat:
+    plc_period_sec: 1.0
+    gw_timeout_sec: 30.0
+
+  safety:
+    overtemp_trip_x10: 950
+    heater_feedback_timeout_sec: 10.0
+    fan_feedback_timeout_sec: 10.0
+
+# -----------------------------------------------------------------------------
+# Fault injection
+# Enable with env vars, e.g. INJECT_SPIKE=true INJECT_DRIFT=true
+# The three modes differ in how detectable they are, which is the point:
+#   spike -> caught by a threshold alarm
+#   stuck -> caught only by checking for variance
+#   drift -> caught by neither; needs statistics. This is the interesting one.
+# -----------------------------------------------------------------------------
+anomalies:
+  spike:
+    env: INJECT_SPIKE
+    enabled: false
+    target: temp_2_x10
+    magnitude_c: 28.0
+    duration_sec: 12
+    period_sec: 600
+    expect: alarm_code becomes OVERTEMP and latches
+
+  stuck:
+    env: INJECT_STUCK
+    enabled: false
+    target: temp_3_x10
+    after_sec: 300
+    expect: value freezes; no alarm unless variance is checked
+
+  drift:
+    env: INJECT_DRIFT
+    enabled: false
+    target: rh_2_x10
+    rate_per_min: 0.05
+    max_offset: 8.0
+    expect: no alarm at all; requires statistical detection
