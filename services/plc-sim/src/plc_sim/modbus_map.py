@@ -82,7 +82,8 @@ class ModbusMap:
             await self._write(tag.function_code, tag.address, [bool(value)])
             return
         if tag.datatype == "uint32":
-            await self._write(FC_READ_HOLDING, tag.address, self._split_u32(int(value), tag.word_order))
+            words = self._split_u32(int(value), tag.word_order)
+            await self._write(FC_READ_HOLDING, tag.address, words)
             return
         raw = self.cfg.to_raw(name, float(value)) if tag.scale != 1.0 else int(value)
         await self._write(FC_READ_HOLDING, tag.address, [max(0, min(65535, raw))])

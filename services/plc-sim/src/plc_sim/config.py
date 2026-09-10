@@ -353,7 +353,7 @@ def _check_blocks(cfg: Config) -> None:
         by_function.setdefault(block.function, []).append(block)
     for function, blocks in by_function.items():
         ordered = sorted(blocks, key=lambda b: b.start)
-        for prev, nxt in zip(ordered, ordered[1:]):
+        for prev, nxt in zip(ordered, ordered[1:], strict=False):
             if nxt.start <= prev.end:
                 raise ConfigError(
                     f"{function} blocks {prev.name!r} [{prev.start}..{prev.end}] and "

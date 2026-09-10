@@ -18,7 +18,9 @@ Tick order matters and follows what a real PLC scan does:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -27,7 +29,7 @@ from pathlib import Path
 
 from .anomaly import AnomalyInjector
 from .config import Config, load_config
-from .constants import AlarmCode, ChamberState, DesiredMode, next_counter
+from .constants import ChamberState, next_counter
 from .modbus_map import ModbusMap
 from .physics import ChamberPhysics
 from .state_machine import ChamberController, CommandFrame
@@ -177,11 +179,11 @@ class ChamberSimulator:
         c = self.controller
 
         if temps_c is not None:
-            for tag, value in zip(self.temp_tags, temps_c):
+            for tag, value in zip(self.temp_tags, temps_c, strict=True):
                 await self.mb.write_tag(tag.name, value)
             await self.mb.write_tag("temp_max_x10", max(temps_c))
         if rh_pct is not None:
-            for tag, value in zip(self.rh_tags, rh_pct):
+            for tag, value in zip(self.rh_tags, rh_pct, strict=True):
                 await self.mb.write_tag(tag.name, value)
             await self.mb.write_tag("rh_avg_x10", sum(rh_pct) / len(rh_pct))
 
@@ -219,37 +221,77 @@ class ChamberSimulator:
         })
 
 
-def build_simulator() -> ChamberSimulator:
-    tags_file = os.getenv("TAGS_FILE", str(Path(__file__).resolve().parents[2] / "config" / "tags.yaml"))
-    cfg = load_config(tags_file)
-    chamber_id = os.getenv("CHAMBER_ID", "chamber-01")
-    host = os.getenv("BIND_HOST", cfg.device.host)
-    port = int(os.getenv("BIND_PORT", cfg.device.port))
-    return ChamberSimulator(cfg, chamber_id, host, port)
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Command line beats environment beats tags.yaml.
+
+    argparse is here so that an unrecognised flag stops the process. Silently
+    ignoring input the operator meant is the same class of failure as a
+    directive in the wrong section of a unit file: it looks like it worked.
+    """
+    default_tags = Path(__file__).resolve().parents[2] / "config" / "tags.yaml"
+
+    parser = argparse.ArgumentParser(
+        prog="plc-sim",
+        description="Modbus TCP simulator for one drying chamber.",
+    )
+    parser.add_argument(
+        "--chamber-id",
+        default=os.getenv("CHAMBER_ID", "chamber-01"),
+        help="identifies the chamber and seeds its model (env: CHAMBER_ID)",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("BIND_HOST"),
+        help="address to bind (env: BIND_HOST, else tags.yaml)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("BIND_PORT")) if os.getenv("BIND_PORT") else None,
+        help="port to bind (env: BIND_PORT, else tags.yaml)",
+    )
+    parser.add_argument(
+        "--tags",
+        default=os.getenv("TAGS_FILE", str(default_tags)),
+        help="path to tags.yaml (env: TAGS_FILE)",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=os.getenv("LOG_LEVEL", "INFO"),
+        help="DEBUG, INFO, WARNING, ERROR (env: LOG_LEVEL)",
+    )
+    return parser.parse_args(argv)
 
 
-async def _amain() -> None:
-    sim = build_simulator()
+def build_simulator(args: argparse.Namespace | None = None) -> ChamberSimulator:
+    args = args or parse_args([])
+    cfg = load_config(args.tags)
+    host = args.host or cfg.device.host
+    port = args.port or cfg.device.port
+    return ChamberSimulator(cfg, args.chamber_id, host, port)
+
+
+async def _amain(args: argparse.Namespace) -> None:
+    sim = build_simulator(args)
     task = asyncio.create_task(sim.run())
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with contextlib.suppress(NotImplementedError):  # not available on Windows
             loop.add_signal_handler(sig, task.cancel)
-        except NotImplementedError:  # pragma: no cover - Windows
-            pass
     try:
         await task
     except asyncio.CancelledError:
         log.info("shutting down")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
     logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        level=args.log_level.upper(),
         format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
     )
-    asyncio.run(_amain())
+    asyncio.run(_amain(args))
 
 
 if __name__ == "__main__":

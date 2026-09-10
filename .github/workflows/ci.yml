@@ -138,7 +138,7 @@ jobs:
 
       - name: Smoke test against the built image
         # Building an image that starts is not the same as building one that
-        # answers Modbus. This runs the real verify script against a container.
+        # answers Modbus. The verify module runs against the real container.
         run: |
           set -euo pipefail
           docker run -d --name plc-sim-ci -p 5020:5020 ${{ env.IMAGE_NAME }}:ci
@@ -151,7 +151,8 @@ jobs:
           test "$status" = "healthy" || { docker logs plc-sim-ci; exit 1; }
 
           pip install --quiet "pymodbus>=3.15,<4.0"
-          bash services/plc-sim/verify.sh 127.0.0.1 5020
+          PYTHONPATH=services/plc-sim/src \
+            python -m plc_sim.verify --host 127.0.0.1 --port 5020
 
       - name: Container logs on failure
         if: failure()

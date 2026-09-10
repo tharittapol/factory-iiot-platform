@@ -42,7 +42,7 @@ ps: ## Show container status
 	$(COMPOSE) ps
 
 verify: ## End-to-end check against 127.0.0.1:5020
-	cd $(SERVICE) && ./verify.sh 127.0.0.1 5020
+	cd $(SERVICE) && uv run python -m plc_sim.verify --host 127.0.0.1 --port 5020
 
 build: ## Build the image
 	docker build -t plc-sim:local $(SERVICE)
