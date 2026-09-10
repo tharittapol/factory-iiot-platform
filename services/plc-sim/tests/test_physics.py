@@ -73,7 +73,7 @@ def test_sensors_track_one_chamber(cfg):
     run(p, 300, heater_on=True)
     hot = [p.read_sensor(pr, "chamber_temp") for pr in profiles]
 
-    assert all(h > c for h, c in zip(hot, cold))
+    assert all(h > c for h, c in zip(hot, cold, strict=True))
     assert max(hot) - min(hot) < 5.0  # same chamber, small spread
 
 

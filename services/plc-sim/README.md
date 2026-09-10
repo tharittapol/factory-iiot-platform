@@ -11,7 +11,12 @@ where each PLC owns an IP address. The entire register contract lives in
 ```bash
 uv sync
 uv run python -m plc_sim.main
+uv run python -m plc_sim.main --chamber-id chamber-03 --port 5022
+uv run python -m plc_sim.main --help
 ```
+
+Command line beats environment beats `tags.yaml`. Containers set the
+environment; a human at a terminal usually wants the flags.
 
 Environment:
 
@@ -27,7 +32,10 @@ Environment:
 
 ```bash
 uv run pytest
-./verify.sh          # end-to-end against a running instance
+uv run python -m plc_sim.verify          # end-to-end against a running instance
+
+# Service names only resolve inside the compose network, not from the host:
+docker compose exec chamber-01 python -m plc_sim.verify --host chamber-03
 ```
 
 With `mbpoll` (1-based addressing, so PDU 220 is `-r 221`):

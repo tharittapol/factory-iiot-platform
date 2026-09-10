@@ -50,7 +50,8 @@ class ChamberPhysics:
         # Starting conditions vary a little per chamber so a four-chamber
         # dashboard does not show four identical lines.
         self.temp_c: float = self.ambient_temp_c + self.rng.uniform(-1.0, 1.5)
-        self.moisture_ratio: float = float(moisture.get("initial_ratio", 0.78)) + self.rng.uniform(-0.08, 0.10)
+        initial_moisture = float(moisture.get("initial_ratio", 0.78))
+        self.moisture_ratio: float = initial_moisture + self.rng.uniform(-0.08, 0.10)
         self.load_mass_ratio: float = 0.9 + self.rng.uniform(-0.15, 0.15)
 
     # -- main step ----------------------------------------------------------
