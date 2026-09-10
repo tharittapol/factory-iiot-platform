@@ -28,6 +28,9 @@ class AlarmCode(IntEnum):
     E_STOP = 3
     HEATER_FAIL = 4
     FAN_FAIL = 5
+    # Warning, not a trip: raised while the gateway is silent, cleared on
+    # its own when the link returns. Everything above latches.
+    GW_LINK_LOST = 6
 
 
 class AckStatus(IntEnum):

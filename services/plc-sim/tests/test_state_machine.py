@@ -164,3 +164,71 @@ def test_target_follows_mode(ctl):
     assert ctl.target_c == 70.0
     ctl.apply_command(frame(CommandBit.WARM, seq=2, setpoint=70.0, warm=40.0))
     assert ctl.target_c == 40.0
+
+
+# -- gateway link loss: warn, do not trip -----------------------------------
+
+
+def test_link_loss_raises_a_warning_without_stopping(ctl):
+    """A drying batch interrupted mid-cycle is scrap, so the chamber runs on."""
+    ctl.apply_command(frame(CommandBit.START))
+    for _ in range(int(ctl.min_on_off_sec) + 2):
+        ctl.step(1.0, [40.0] * 4)
+    assert ctl.heater_on is True
+
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [40.0] * 4)
+
+    assert ctl.alarm is AlarmCode.GW_LINK_LOST
+    assert ctl.state is ChamberState.RUNNING, "must not stop"
+    assert ctl.heater_on is True, "must keep heating"
+    assert ctl.fault_latched is False, "warning, not a trip"
+
+
+def test_link_warning_clears_itself(ctl):
+    ctl.apply_command(frame(CommandBit.START))
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [40.0] * 4)
+    assert ctl.alarm is AlarmCode.GW_LINK_LOST
+
+    ctl.gw_link_ok = True
+    ctl.step(1.0, [40.0] * 4)
+    assert ctl.alarm is AlarmCode.NONE
+
+
+def test_real_fault_outranks_the_link_warning(ctl):
+    """An overtemp must never be masked by a network problem."""
+    ctl.apply_command(frame(CommandBit.START))
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [96.0] * 4)
+
+    assert ctl.alarm is AlarmCode.OVERTEMP
+    assert ctl.state is ChamberState.FAULT
+    assert ctl.fault_latched is True
+
+
+def test_latched_fault_is_not_overwritten_by_link_state(ctl):
+    ctl.apply_command(frame(CommandBit.START))
+    ctl.step(1.0, [96.0] * 4)
+    assert ctl.alarm is AlarmCode.OVERTEMP
+
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [40.0] * 4)
+    assert ctl.alarm is AlarmCode.OVERTEMP, "latched fault must keep its code"
+
+
+def test_stop_still_works_while_the_link_is_down(ctl):
+    ctl.apply_command(frame(CommandBit.START, seq=1))
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [40.0] * 4)
+    ctl.apply_command(frame(CommandBit.STOP, seq=2))
+    assert ctl.state is ChamberState.STOPPED
+
+
+def test_link_change_bumps_state_seq(ctl):
+    """Clients poll state_seq to know something changed; this counts."""
+    ctl.step(1.0, [40.0] * 4)
+    before = ctl.state_seq
+    ctl.gw_link_ok = False
+    ctl.step(1.0, [40.0] * 4)
+    assert ctl.state_seq == before + 1

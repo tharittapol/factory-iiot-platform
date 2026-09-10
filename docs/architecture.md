@@ -139,6 +139,37 @@ the enums in `tags.yaml` match the `IntEnum` classes in `constants.py`: if
 someone renames a state in one place and not the other, the process refuses to
 start rather than emitting a value whose meaning has quietly changed.
 
+## Losing the gateway: warn, do not stop
+
+TCP does not tell a device that its peer has died. A gateway process can hang,
+a cable can be pulled, and the socket will sit open for minutes. The gateway
+therefore advances `gw_heartbeat` on every poll cycle, and the PLC treats a
+counter that stops moving for `gw_timeout_sec` as a dead controller.
+
+What happens next is a judgement call, and it was made deliberately:
+
+| Option | For | Against |
+|---|---|---|
+| Keep running | a 5-second network blip does not scrap the batch | chamber runs unattended |
+| Stop immediately | safest | one blip destroys the whole load |
+| **Keep running, raise an alarm** | **batch survives, and nobody is unaware** | **needs someone watching alarms** |
+| Run on, then fall back to warm hold | gentlest | more states to reason about |
+
+This project takes the third option. On link loss the chamber keeps its state
+and its heater, raises `alarm_code = GW_LINK_LOST` (6), and refuses every
+command except STOP and RESET. The alarm does not latch: it clears by itself
+when the heartbeat resumes, because the condition it reports is current rather
+than historical.
+
+That distinction matters. A real fault - overtemp, e-stop, sensor failure -
+latches until an operator issues RESET, so an incident cannot erase itself
+before anyone sees it. A link warning is a live status, and latching it would
+mean an operator has to acknowledge every network blip.
+
+Priority is explicit in `_check_safety`: latching trips are evaluated first, so
+an overtemp during a network outage still reports `OVERTEMP`. A network problem
+must never mask a safety problem.
+
 ## Anomaly injection
 
 Three modes, chosen because they need different detection strategies:
