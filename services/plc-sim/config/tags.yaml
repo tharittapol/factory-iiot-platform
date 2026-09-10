@@ -443,7 +443,7 @@ discrete_inputs:
   - {address: 6,  name: sensor_2_ok}
   - {address: 7,  name: sensor_3_ok}
   - {address: 8,  name: sensor_4_ok}
-  - {address: 9,  name: gw_link_ok}
+  - {address: 9,  name: gw_link_ok_di}
   - {address: 10, name: running}
 
 # -----------------------------------------------------------------------------
