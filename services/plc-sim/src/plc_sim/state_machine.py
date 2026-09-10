@@ -245,16 +245,29 @@ class ChamberController:
             self._off_elapsed = 0.0
 
     def _check_safety(self, temps_c: list[float]) -> None:
+        """Latching trips first, then non-latching warnings.
+
+        Losing the gateway raises an alarm but does not stop the chamber. A
+        drying batch that is interrupted mid-cycle is scrap, so a brief network
+        outage must not destroy the load; an unattended chamber still has to be
+        visible, so it announces itself instead of running silently. Commands
+        other than STOP and RESET stay refused while the link is down.
+        """
         temp_max = max(temps_c) if temps_c else 0.0
 
         if not self.estop_ok:
             self._trip(AlarmCode.E_STOP)
-        elif temp_max >= self.overtemp_trip_c:
+            return
+        if temp_max >= self.overtemp_trip_c:
             self._trip(AlarmCode.OVERTEMP)
-        elif not all(self.sensors_ok):
+            return
+        if not all(self.sensors_ok):
             self._trip(AlarmCode.SENSOR_FAIL)
-        elif not self.fault_latched:
-            self.alarm = AlarmCode.NONE
+            return
+        if self.fault_latched:
+            return  # keep reporting the latched fault until RESET
+
+        self.alarm = AlarmCode.NONE if self.gw_link_ok else AlarmCode.GW_LINK_LOST
 
     def _trip(self, alarm: AlarmCode) -> None:
         self.alarm = alarm

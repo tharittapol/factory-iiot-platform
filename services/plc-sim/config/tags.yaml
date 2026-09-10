@@ -45,6 +45,7 @@ enums:
     3: E_STOP
     4: HEATER_FAIL
     5: FAN_FAIL
+    6: GW_LINK_LOST
 
   ack_status:
     0: ACCEPTED
