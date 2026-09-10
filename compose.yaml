@@ -1,0 +1,62 @@
+# Four chambers, one image, one entry each.
+#
+# Each container gets its own IP on the compose network and listens on the
+# standard port, which is exactly how four separate PLCs look on a plant
+# network. Moving to real hardware changes the collector's endpoint list and
+# nothing else.
+#
+# Adding a fifth chamber is a block here plus a tags.yaml entry. No code change.
+
+x-chamber: &chamber
+  build:
+    context: ./services/plc-sim
+  image: plc-sim:latest
+  restart: unless-stopped
+  environment:
+    LOG_LEVEL: INFO
+  healthcheck:
+    test: ["CMD", "python", "-c", "import socket,os; s=socket.create_connection(('127.0.0.1', int(os.environ['BIND_PORT'])), 2); s.close()"]
+    interval: 10s
+    timeout: 3s
+    retries: 3
+    start_period: 5s
+
+services:
+  chamber-01:
+    <<: *chamber
+    container_name: chamber-01
+    environment:
+      CHAMBER_ID: chamber-01
+      LOG_LEVEL: INFO
+    # Only chamber-01 is published, for poking at with mbpoll from the host.
+    # The collector reaches the others by service name inside the network.
+    ports:
+      - "127.0.0.1:5020:5020"
+
+  chamber-02:
+    <<: *chamber
+    container_name: chamber-02
+    environment:
+      CHAMBER_ID: chamber-02
+      LOG_LEVEL: INFO
+
+  chamber-03:
+    <<: *chamber
+    container_name: chamber-03
+    environment:
+      CHAMBER_ID: chamber-03
+      LOG_LEVEL: INFO
+      # This chamber runs with a slow sensor drift so downstream alerting has
+      # something real to find. A threshold alarm will never see it.
+      INJECT_DRIFT: "true"
+
+  chamber-04:
+    <<: *chamber
+    container_name: chamber-04
+    environment:
+      CHAMBER_ID: chamber-04
+      LOG_LEVEL: INFO
+
+networks:
+  default:
+    name: factory-iiot
