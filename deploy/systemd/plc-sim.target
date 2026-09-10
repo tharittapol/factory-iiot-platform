@@ -1,0 +1,18 @@
+# Group unit: start, stop or restart every chamber with one command.
+#
+#   sudo systemctl start plc-sim.target
+#   sudo systemctl restart plc-sim.target
+#
+# For restart to cascade to the instances, each one needs PartOf=plc-sim.target.
+# Add it with a drop-in rather than editing the template:
+#
+#   sudo systemctl edit plc-sim@chamber-01
+#   [Unit]
+#   PartOf=plc-sim.target
+
+[Unit]
+Description=All drying chamber simulators
+After=multi-user.target
+
+[Install]
+WantedBy=multi-user.target

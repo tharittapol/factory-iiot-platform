@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A new push supersedes the run in flight for the same branch.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: plc-sim
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/plc-sim
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/plc-sim/uv.lock
+
+      - name: Install dependencies
+        # --frozen fails if uv.lock is out of date with pyproject.toml, so a
+        # dependency change that was never locked cannot reach main.
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Tests
+        run: uv run pytest -q
+
+  secret-scan:
+    # This project was rebuilt from work done for a client. The scan is here so
+    # a stray credential or customer artefact cannot reach a public repo by
+    # accident rather than by discipline.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No binaries or customer artefacts tracked
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -iE '\.(db|sqlite3?|pem|crt|key|pfx)$'; then
+            echo "::error::binary or credential file is tracked"
+            exit 1
+          fi
+          if git grep -rIn -iE 'REDACTED' -- . ; then
+            echo "::error::customer identifier found in the tree"
+            exit 1
+          fi
+          echo "clean"
+
+  config-contract:
+    # tags.yaml is the interface every other service will consume. Breaking it
+    # should fail here, not in the collector three weeks from now.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/plc-sim
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/plc-sim/uv.lock
+      - run: uv sync --frozen
+
+      - name: Config loads and validates
+        run: |
+          uv run python - <<'PY'
+          from plc_sim.config import load_config
+          cfg = load_config("config/tags.yaml")
+          print(f"version={cfg.version} tags={len(cfg.tags)} blocks={len(cfg.blocks)}")
+          for name in ("command", "status", "sensors", "diagnostics"):
+              b = cfg.block(name)
+              print(f"  {name}: [{b.start}..{b.end}] {len(cfg.tags_in(name))} tags")
+          PY
+
+      - name: Required tags are present
+        # A rename that drops one of these silently breaks the command protocol.
+        run: |
+          uv run python - <<'PY'
+          from plc_sim.config import load_config
+          cfg = load_config("config/tags.yaml")
+          required = [
+              "cmd_word", "cmd_seq", "setpoint_x10", "gw_heartbeat",
+              "chamber_state", "alarm_code", "ack_status", "last_cmd_seq_done",
+              "temp_1_x10", "rh_1_x10",
+          ]
+          missing = [name for name in required if name not in cfg.tags]
+          assert not missing, f"missing required tags: {missing}"
+          print("contract ok")
+          PY
+
+  build-and-smoke:
+    needs: [lint-and-test, config-contract]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/plc-sim
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image runs as a non-root user
+        run: |
+          uid=$(docker run --rm ${{ env.IMAGE_NAME }}:ci id -u)
+          echo "uid=$uid"
+          test "$uid" != "0"
+
+      - name: Smoke test against the built image
+        # Building an image that starts is not the same as building one that
+        # answers Modbus. This runs the real verify script against a container.
+        run: |
+          set -euo pipefail
+          docker run -d --name plc-sim-ci -p 5020:5020 ${{ env.IMAGE_NAME }}:ci
+
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' plc-sim-ci)
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          test "$status" = "healthy" || { docker logs plc-sim-ci; exit 1; }
+
+          pip install --quiet "pymodbus>=3.15,<4.0"
+          bash services/plc-sim/verify.sh 127.0.0.1 5020
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs plc-sim-ci || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f plc-sim-ci || true
+
+  systemd-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify unit files
+        # systemd-analyze catches directives placed in the wrong section, which
+        # systemd would otherwise ignore silently at runtime.
+        run: |
+          set -euo pipefail
+          out=$(systemd-analyze verify deploy/systemd/plc-sim@.service 2>&1 || true)
+          echo "$out"
+          if echo "$out" | grep -q "Unknown key name"; then
+            echo "::error::unit file has a misplaced or misspelled directive"
+            exit 1
+          fi
