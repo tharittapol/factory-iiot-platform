@@ -65,7 +65,10 @@ jobs:
             echo "::error::binary or credential file is tracked"
             exit 1
           fi
-          if git grep -rIn -iE 'mitsubishi|FX5[A-Z]|rubber_dryer_room' -- . ; then
+          # The scanners contain the pattern themselves; exclude them or the
+          # check matches its own source and can never pass.
+          if git grep -rIn -iE 'mitsubishi|FX5[A-Z]|rubber_dryer_room' -- . \
+               ':!.github/workflows/ci.yml' ':!Makefile' ':!scripts/dev-check.sh' ; then
             echo "::error::customer identifier found in the tree"
             exit 1
           fi
