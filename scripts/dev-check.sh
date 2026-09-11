@@ -28,7 +28,7 @@ else
 fi
 
 step "customer identifiers"
-if git grep -rIn -iE 'mitsubishi|FX5[A-Z]|rubber_dryer_room' -- . >/dev/null 2>&1; then
+if git grep -rIn -iE 'mitsubishi|FX5[A-Z]|rubber_dryer_room' -- . ':!.github/workflows/ci.yml' ':!Makefile' ':!scripts/dev-check.sh' >/dev/null 2>&1; then
   echo "  FAILED: customer identifier present"; fail=1
 else
   echo "  ok"
