@@ -3,6 +3,7 @@
 
 SERVICE := services/plc-sim
 COMPOSE := docker compose
+IP = $(shell docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $(1))
 
 .DEFAULT_GOAL := help
 .PHONY: help setup lint fmt test check run up down logs ps verify build scan clean
@@ -29,7 +30,7 @@ run: ## Run one chamber in the foreground
 	cd $(SERVICE) && uv run python -m plc_sim.main
 
 up: ## Start all chambers
-	$(COMPOSE) up --build -d
+	$(COMPOSE) up --build -d --wait --wait-timeout 40
 	@$(COMPOSE) ps
 
 down: ## Stop all chambers
@@ -58,3 +59,6 @@ scan: ## Check nothing sensitive is tracked
 clean: ## Remove caches and build artefacts
 	find . -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) \
 		-exec rm -rf {} + 2>/dev/null || true
+
+poll: ## Poll a chamber: make poll CH=chamber-03
+	mbpoll -m tcp -a 1 -r 221 -c 12 -t 4 -l 1000 $(call IP,$(CH)) -p 5020
