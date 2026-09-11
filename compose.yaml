@@ -31,7 +31,7 @@ services:
     # Only chamber-01 is published, for poking at with mbpoll from the host.
     # The collector reaches the others by service name inside the network.
     ports:
-      - "127.0.0.1:5020:5020"
+      - "127.0.0.1:5020:5020" # Left = host (changeable), Right = inside container (fixed)
 
   chamber-02:
     <<: *chamber
