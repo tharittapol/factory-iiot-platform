@@ -15,3 +15,5 @@ data/
 .ruff_cache/
 .vscode/
 .idea/
+
+.scan-patterns

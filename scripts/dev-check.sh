@@ -31,11 +31,7 @@ else
 fi
 
 step "customer identifiers"
-if git grep -rIn -iE 'REDACTED' -- . ':!.github/workflows/ci.yml' ':!Makefile' ':!scripts/dev-check.sh' >/dev/null 2>&1; then
-  echo "  FAILED: customer identifier present"; fail=1
-else
-  echo "  ok"
-fi
+try scripts/scan-identifiers.sh
 
 step "systemd unit"
 if command -v systemd-analyze >/dev/null; then

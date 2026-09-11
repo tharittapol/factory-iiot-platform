@@ -55,7 +55,7 @@ scan: ## Check nothing sensitive is tracked
 	@echo "==> tracked binaries and credentials"
 	@! git ls-files | grep -iE '\.(db|sqlite3?|pem|crt|key)$$' || (echo "FOUND" && exit 1)
 	@echo "==> customer identifiers"
-	@! git grep -rIn -iE 'REDACTED' -- . ':!.github/workflows/ci.yml' ':!Makefile' ':!scripts/dev-check.sh' || (echo "FOUND" && exit 1)
+	@bash scripts/scan-identifiers.sh
 	@command -v gitleaks >/dev/null && gitleaks detect --source . --no-banner || echo "(gitleaks not installed, skipped)"
 	@echo "clean"
 
