@@ -6,7 +6,7 @@ COMPOSE := docker compose
 IP = $(shell docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $(1))
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test check run up down logs ps verify build scan clean
+.PHONY: help setup lint fmt fmt-check test check run up down logs ps verify build scan clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -21,10 +21,13 @@ lint: ## Run ruff
 fmt: ## Format the code
 	cd $(SERVICE) && uv run ruff format .
 
+fmt-check: ## Check formatting without writing (this is what CI runs)
+	cd $(SERVICE) && uv run ruff format --check .
+
 test: ## Run the test suite
 	cd $(SERVICE) && uv run pytest -q
 
-check: lint test ## Everything CI runs locally
+check: lint fmt-check test ## Everything CI runs locally
 
 run: ## Run one chamber in the foreground
 	cd $(SERVICE) && uv run python -m plc_sim.main
