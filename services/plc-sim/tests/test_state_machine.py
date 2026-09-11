@@ -12,8 +12,7 @@ def frame(*bits, seq=1, setpoint=65.0, warm=35.0, **kw):
     word = 0
     for b in bits:
         word |= 1 << b
-    return CommandFrame(cmd_word=word, seq=seq, setpoint_c=setpoint,
-                        warm_hold_c=warm, **kw)
+    return CommandFrame(cmd_word=word, seq=seq, setpoint_c=setpoint, warm_hold_c=warm, **kw)
 
 
 @pytest.fixture

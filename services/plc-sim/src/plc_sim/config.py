@@ -300,8 +300,7 @@ def _check_duplicate_addresses(cfg: Config) -> None:
                 addr = tag.address + offset
                 if addr in seen:
                     raise ConfigError(
-                        f"{function} address {addr} used by both "
-                        f"{seen[addr]!r} and {tag.name!r}"
+                        f"{function} address {addr} used by both {seen[addr]!r} and {tag.name!r}"
                     )
                 seen[addr] = tag.name
 

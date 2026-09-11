@@ -206,9 +206,10 @@ class ChamberController:
         return 0.0
 
     def _update_actuators(self, dt: float, temps_c: list[float]) -> None:
-        self.fan_on = (
-            not self.fault_latched
-            and self.state in (ChamberState.RUNNING, ChamberState.WARM_HOLD, ChamberState.WAITING)
+        self.fan_on = not self.fault_latched and self.state in (
+            ChamberState.RUNNING,
+            ChamberState.WARM_HOLD,
+            ChamberState.WAITING,
         )
 
         allow_heat = (
