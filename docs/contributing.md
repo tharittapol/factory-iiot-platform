@@ -55,6 +55,9 @@ Three gaps, so a green local run does not mislead you:
 - **gitleaks may not be installed.** `make scan` then prints
   `(gitleaks not installed, skipped)` and still reports `clean`. CI runs it for
   real.
+- **The identifier scan needs `.scan-patterns`.** Without it the local scan
+  prints `skipped` and passes. CI reads the `SCAN_PATTERNS` secret and fails if
+  it is missing.
 - **The local config check is weaker than CI's.** `dev-check.sh` loads
   `tags.yaml` but does not assert the required-tag list (`cmd_word`,
   `gw_heartbeat` and the rest). A dropped or renamed tag passes locally and
@@ -66,6 +69,25 @@ Three gaps, so a green local run does not mislead you:
   make build && make up && make verify
   make down
   ```
+
+## Identifier patterns
+
+The customer identifiers the scan looks for are kept out of the repo, because a
+tracked list of them would publish exactly what the scan protects. They live in
+two places that must be kept in step:
+
+- `.scan-patterns` at the repo root, gitignored, one extended regex per line.
+  Ask a maintainer for its contents.
+- The `SCAN_PATTERNS` Actions secret, which CI reads.
+
+After changing the local file, update the secret:
+
+```bash
+gh secret set SCAN_PATTERNS < .scan-patterns
+```
+
+A match is reported by file name only, so a hit never prints an identifier
+into a public CI log.
 
 ## Git configuration
 

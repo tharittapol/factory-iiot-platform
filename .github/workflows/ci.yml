@@ -58,21 +58,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: No binaries or customer artefacts tracked
+      - name: No binaries or credentials tracked
         run: |
           set -euo pipefail
           if git ls-files | grep -iE '\.(db|sqlite3?|pem|crt|key|pfx)$'; then
             echo "::error::binary or credential file is tracked"
             exit 1
           fi
-          # The scanners contain the pattern themselves; exclude them or the
-          # check matches its own source and can never pass.
-          if git grep -rIn -iE 'REDACTED' -- . \
-               ':!.github/workflows/ci.yml' ':!Makefile' ':!scripts/dev-check.sh' ; then
-            echo "::error::customer identifier found in the tree"
-            exit 1
-          fi
           echo "clean"
+
+      - name: No customer identifiers tracked
+        # The patterns live in the SCAN_PATTERNS secret, not the repo: a list of
+        # identifiers to keep out would itself publish them.
+        env:
+          SCAN_PATTERNS: ${{ secrets.SCAN_PATTERNS }}
+        run: bash scripts/scan-identifiers.sh
 
   config-contract:
     # tags.yaml is the interface every other service will consume. Breaking it
