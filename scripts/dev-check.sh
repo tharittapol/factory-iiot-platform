@@ -10,6 +10,9 @@ try()  { if "$@"; then echo "  ok"; else echo "  FAILED"; fail=1; fi; }
 step "lint"
 try bash -c 'cd services/plc-sim && uv run ruff check .'
 
+step "format"
+try bash -c 'cd services/plc-sim && uv run ruff format --check .'
+
 step "tests"
 try bash -c 'cd services/plc-sim && uv run pytest -q'
 
