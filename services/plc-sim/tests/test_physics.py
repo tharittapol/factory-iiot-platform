@@ -65,8 +65,7 @@ def test_different_seed_diverges(cfg):
 def test_sensors_track_one_chamber(cfg):
     """Four sensors must move together, not wander independently."""
     p = ChamberPhysics(cfg.simulation, seed="t")
-    tags = [t for t in cfg.tags_by_function("holding")
-            if t.sim.get("source") == "chamber_temp"]
+    tags = [t for t in cfg.tags_by_function("holding") if t.sim.get("source") == "chamber_temp"]
     profiles = [p.make_sensor(t.name, t.sim) for t in tags]
 
     cold = [p.read_sensor(pr, "chamber_temp") for pr in profiles]
@@ -80,8 +79,7 @@ def test_sensors_track_one_chamber(cfg):
 def test_sensor_offset_is_persistent(cfg):
     """A calibration error stays put; only noise varies per read."""
     p = ChamberPhysics(cfg.simulation, seed="t")
-    tag = next(t for t in cfg.tags_by_function("holding")
-               if t.sim.get("source") == "chamber_temp")
+    tag = next(t for t in cfg.tags_by_function("holding") if t.sim.get("source") == "chamber_temp")
     profile = p.make_sensor(tag.name, tag.sim)
     reads = [p.read_sensor(profile, "chamber_temp") for _ in range(20)]
     spread = max(reads) - min(reads)

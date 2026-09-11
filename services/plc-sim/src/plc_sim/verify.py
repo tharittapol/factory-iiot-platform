@@ -61,9 +61,7 @@ class Verifier:
         self.r = report
 
     async def read(self, address: int, count: int) -> list[int]:
-        result = await self.c.read_holding_registers(
-            address, count=count, device_id=self.device_id
-        )
+        result = await self.c.read_holding_registers(address, count=count, device_id=self.device_id)
         if result.isError():
             raise RuntimeError(f"read at {address} failed: {result}")
         return list(result.registers)
@@ -152,8 +150,11 @@ class Verifier:
         await self.write(100, [1 << 0])  # START, not yet committed
 
         link = (await self.read(207, 1))[0]
-        self.r.check("gateway link recognised", link == 1,
-                     "heartbeat must keep moving or commands are refused")
+        self.r.check(
+            "gateway link recognised",
+            link == 1,
+            "heartbeat must keep moving or commands are refused",
+        )
 
         await asyncio.sleep(0.5)
         st = await self.read(200, 12)
@@ -170,12 +171,14 @@ class Verifier:
         await asyncio.sleep(1.0)
         st = await self.read(200, 12)
 
-        self.r.check("START accepted after commit", st[0] == ChamberState.RUNNING,
-                     f"state={ChamberState(st[0]).name}")
+        self.r.check(
+            "START accepted after commit",
+            st[0] == ChamberState.RUNNING,
+            f"state={ChamberState(st[0]).name}",
+        )
         self.r.check("setpoint latched", st[5] == 650, str(st[5]))
         self.r.check("cmd_seq acknowledged", st[10] == seq, f"last_cmd_seq_done={st[10]}")
-        self.r.check("ack reports execution", st[9] == AckStatus.EXECUTING,
-                     AckStatus(st[9]).name)
+        self.r.check("ack reports execution", st[9] == AckStatus.EXECUTING, AckStatus(st[9]).name)
 
         # Re-sending the same seq must not run the command a second time.
         state_seq_before = st[11]
@@ -197,8 +200,11 @@ class Verifier:
     async def check_diagnostics(self) -> None:
         dg = await self.read(300, 7)
         uptime = dg[0] | (dg[1] << 16)
-        self.r.check("diagnostics populated", uptime > 0,
-                     f"uptime={uptime}s anomalies=0b{dg[5]:03b} config_version={dg[6]}")
+        self.r.check(
+            "diagnostics populated",
+            uptime > 0,
+            f"uptime={uptime}s anomalies=0b{dg[5]:03b} config_version={dg[6]}",
+        )
 
     async def check_addressing(self) -> None:
         """A one-register shift would put every value in the wrong column.
@@ -260,8 +266,10 @@ def main(argv: list[str] | None = None) -> int:
     if report.ok:
         print(f"all {report.passed} checks passed")
         return 0
-    print(f"FAILED: {len(report.failures)} of "
-          f"{report.passed + len(report.failures)}: {', '.join(report.failures)}")
+    print(
+        f"FAILED: {len(report.failures)} of "
+        f"{report.passed + len(report.failures)}: {', '.join(report.failures)}"
+    )
     return 1
 
 

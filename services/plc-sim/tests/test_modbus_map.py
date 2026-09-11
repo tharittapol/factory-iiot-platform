@@ -72,14 +72,10 @@ async def test_no_off_by_one_on_the_wire(running_map, cfg):
     client = AsyncModbusTcpClient("127.0.0.1", port=PORT)
     await client.connect()
     try:
-        result = await client.read_holding_registers(
-            220, count=2, device_id=cfg.device.unit_id
-        )
+        result = await client.read_holding_registers(220, count=2, device_id=cfg.device.unit_id)
         assert result.registers == [1111, 2222]
 
-        shifted = await client.read_holding_registers(
-            219, count=3, device_id=cfg.device.unit_id
-        )
+        shifted = await client.read_holding_registers(219, count=3, device_id=cfg.device.unit_id)
         assert shifted.registers == [0, 1111, 2222]
     finally:
         client.close()
