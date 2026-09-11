@@ -53,13 +53,14 @@ class ChamberSimulator:
         self.plc_hb_period = float(hb.get("plc_period_sec", 1.0))
         self.gw_timeout = float(hb.get("gw_timeout_sec", 30.0))
 
-        self.temp_tags = [t for t in cfg.tags_by_function("holding")
-                          if t.sim.get("source") == "chamber_temp"]
-        self.rh_tags = [t for t in cfg.tags_by_function("holding")
-                        if t.sim.get("source") == "chamber_humidity"]
+        self.temp_tags = [
+            t for t in cfg.tags_by_function("holding") if t.sim.get("source") == "chamber_temp"
+        ]
+        self.rh_tags = [
+            t for t in cfg.tags_by_function("holding") if t.sim.get("source") == "chamber_humidity"
+        ]
         self.sensors = {
-            t.name: self.physics.make_sensor(t.name, t.sim)
-            for t in self.temp_tags + self.rh_tags
+            t.name: self.physics.make_sensor(t.name, t.sim) for t in self.temp_tags + self.rh_tags
         }
 
         self.started_at = time.monotonic()
@@ -78,7 +79,10 @@ class ChamberSimulator:
 
         log.info(
             "chamber=%s listening on %s:%d unit_id=%d anomalies=%s",
-            self.chamber_id, self.mb.host, self.mb.port, self.mb.device_id,
+            self.chamber_id,
+            self.mb.host,
+            self.mb.port,
+            self.mb.device_id,
             ",".join(self.anomaly.enabled_kinds) or "none",
         )
 
@@ -158,8 +162,13 @@ class ChamberSimulator:
         )
         self.controller.apply_command(frame)
         self.request_count += 1
-        log.debug("chamber=%s applied cmd seq=%d word=0x%x -> %s",
-                  self.chamber_id, seq, frame.cmd_word, self.controller.state.name)
+        log.debug(
+            "chamber=%s applied cmd seq=%d word=0x%x -> %s",
+            self.chamber_id,
+            seq,
+            frame.cmd_word,
+            self.controller.state.name,
+        )
 
     def _sample_sensors(self, now: float) -> tuple[list[float], list[float]]:
         elapsed = now - self.started_at
@@ -174,8 +183,9 @@ class ChamberSimulator:
 
     # -- publishing ---------------------------------------------------------
 
-    async def _publish(self, temps_c: list[float] | None = None,
-                       rh_pct: list[float] | None = None) -> None:
+    async def _publish(
+        self, temps_c: list[float] | None = None, rh_pct: list[float] | None = None
+    ) -> None:
         c = self.controller
 
         if temps_c is not None:
@@ -187,38 +197,44 @@ class ChamberSimulator:
                 await self.mb.write_tag(tag.name, value)
             await self.mb.write_tag("rh_avg_x10", sum(rh_pct) / len(rh_pct))
 
-        await self.mb.write_many({
-            "chamber_state": int(c.state),
-            "alarm_code": int(c.alarm),
-            "heater_on": int(c.heater_on),
-            "setpoint_latched_x10": c.setpoint_c,
-            "step_index_latched": c.step_index,
-            "gw_link_ok": int(c.gw_link_ok),
-            "plc_heartbeat": self.plc_hb,
-            "ack_status": int(c.ack),
-            "last_cmd_seq_done": c.last_seq_done,
-            "state_seq": c.state_seq,
-        })
+        await self.mb.write_many(
+            {
+                "chamber_state": int(c.state),
+                "alarm_code": int(c.alarm),
+                "heater_on": int(c.heater_on),
+                "setpoint_latched_x10": c.setpoint_c,
+                "step_index_latched": c.step_index,
+                "gw_link_ok": int(c.gw_link_ok),
+                "plc_heartbeat": self.plc_hb,
+                "ack_status": int(c.ack),
+                "last_cmd_seq_done": c.last_seq_done,
+                "state_seq": c.state_seq,
+            }
+        )
 
-        await self.mb.write_many({
-            "alarm_active": c.alarm_active,
-            "heater_feedback": c.heater_on,
-            "fan_feedback": c.fan_on,
-            "estop_ok": c.estop_ok,
-            "door_closed": c.door_closed,
-            "sensor_1_ok": c.sensors_ok[0],
-            "sensor_2_ok": c.sensors_ok[1],
-            "sensor_3_ok": c.sensors_ok[2],
-            "sensor_4_ok": c.sensors_ok[3],
-            "gw_link_ok_di": c.gw_link_ok,
-            "running": c.state == ChamberState.RUNNING,
-        })
+        await self.mb.write_many(
+            {
+                "alarm_active": c.alarm_active,
+                "heater_feedback": c.heater_on,
+                "fan_feedback": c.fan_on,
+                "estop_ok": c.estop_ok,
+                "door_closed": c.door_closed,
+                "sensor_1_ok": c.sensors_ok[0],
+                "sensor_2_ok": c.sensors_ok[1],
+                "sensor_3_ok": c.sensors_ok[2],
+                "sensor_4_ok": c.sensors_ok[3],
+                "gw_link_ok_di": c.gw_link_ok,
+                "running": c.state == ChamberState.RUNNING,
+            }
+        )
 
-        await self.mb.write_many({
-            "uptime_sec": int(time.monotonic() - self.started_at),
-            "request_count": self.request_count,
-            "sim_anomaly_active": self.anomaly.active_bitmask,
-        })
+        await self.mb.write_many(
+            {
+                "uptime_sec": int(time.monotonic() - self.started_at),
+                "request_count": self.request_count,
+                "sim_anomaly_active": self.anomaly.active_bitmask,
+            }
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

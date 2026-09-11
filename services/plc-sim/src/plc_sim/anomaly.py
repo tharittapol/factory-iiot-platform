@@ -77,9 +77,7 @@ class AnomalyInjector:
             value = self._apply_one(spec, tag_name, value, elapsed_sec)
         return value
 
-    def _apply_one(
-        self, spec: AnomalySpec, tag_name: str, value: float, elapsed: float
-    ) -> float:
+    def _apply_one(self, spec: AnomalySpec, tag_name: str, value: float, elapsed: float) -> float:
         p = spec.params
 
         if spec.kind == "spike":

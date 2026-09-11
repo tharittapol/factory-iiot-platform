@@ -68,8 +68,7 @@ def test_cli_overrides_environment(monkeypatch, tags_file):
 
     monkeypatch.setenv("CHAMBER_ID", "from-env")
     monkeypatch.setenv("BIND_PORT", "5555")
-    args = parse_args(["--chamber-id", "from-cli", "--port", "5556",
-                       "--tags", str(tags_file)])
+    args = parse_args(["--chamber-id", "from-cli", "--port", "5556", "--tags", str(tags_file)])
     sim = build_simulator(args)
     assert sim.chamber_id == "from-cli"
     assert sim.mb.port == 5556
