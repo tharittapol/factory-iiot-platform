@@ -61,10 +61,14 @@ instance per chamber.
 ## Develop
 
 ```bash
-make check     # lint + tests, the same gates CI runs
+make check     # lint, format check and tests
 make scan      # nothing sensitive is tracked
 make help
 ```
+
+Before pushing, run `./scripts/dev-check.sh`. The full branch-to-merge workflow,
+and what the local gates do not cover, is in
+[`docs/contributing.md`](docs/contributing.md).
 
 ## What this demonstrates
 
